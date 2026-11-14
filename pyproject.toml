@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-clipper"
+version = "0.1.0"
+description = "Local-first gaming clip analysis and hardware benchmarking"
+license = {file = "LICENSE"}
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.115.12",
+    "uvicorn==0.34.2",
+    "python-multipart==0.0.20",
+    "psutil==7.0.0",
+    "jiwer==4.0.0",
+]
+
+[project.optional-dependencies]
+speech = ["faster-whisper==1.2.1", "ctranslate2==4.8.5", "requests==2.32.5"]
+sources = ["yt-dlp[default]>=2026.10.26,<2027"]
+test = ["pytest==8.3.5", "httpx==0.28.1"]
+
+[project.scripts]
+clipper = "clipper.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]

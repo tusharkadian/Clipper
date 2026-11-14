@@ -1,0 +1,38 @@
+name: Clip quality feedback
+description: Report missed moments, repeated clips, bad boundaries or caption errors.
+title: "[Quality] "
+body:
+  - type: markdown
+    attributes:
+      value: "Describe the problem without uploading source footage or transcripts. Confidence is not measured accuracy. Any optional evidence must be authorized and reviewed."
+  - type: input
+    id: version
+    attributes:
+      label: Commit or source version
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Quality problem
+      options:
+        - Missed useful moment
+        - Loud non-event selected
+        - Duplicate or replay
+        - Cut boundary
+        - Caption text or timing
+        - Crop or export quality
+  - type: textarea
+    id: details
+    attributes:
+      label: Expected result and relevant settings
+      description: "Game/format, English or unsupported language, clip maximum, threshold, AI/activity status and a non-private description."
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Evidence review
+      options:
+        - label: "I have permission for any evidence and reviewed it for private data and publishing rights."
+          required: true
