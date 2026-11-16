@@ -12,6 +12,7 @@ from threading import Event
 from typing import Callable
 
 from .preflight import executable
+from .domain import SourceRegion, WebcamLayout
 
 CAPTION_FONT_WIDTH_RATIO = 0.09
 CAPTION_BOTTOM_MARGIN_RATIO = 0.09
@@ -312,12 +313,47 @@ def write_ass_captions(words: list[dict], start: float, end: float, path: Path, 
     return len(cues)
 
 
+def webcam_composition(layout: WebcamLayout, width: int, height: int, zoom: float) -> tuple[str, dict]:
+    camera_height = max(2, round(height * layout.top_fraction / 2) * 2)
+    game_height = height - camera_height
+
+    def panel(region: SourceRegion, source_label: str, name: str, panel_height: int, factor: float) -> str:
+        sizing = "max" if name == "game" and layout.gameplay_fit == "fill" else "min"
+        fit = f"{sizing}({width}/iw,{panel_height}/ih)*{factor}"
+        vertical = "H-h" if name == "camera" else "0"
+        background_width, background_height = max(2, width // 16 * 2), max(2, panel_height // 16 * 2)
+        return (
+            f"[{source_label}]crop=w='max(2,trunc(iw*{region.width}/2)*2)':h='max(2,trunc(ih*{region.height}/2)*2)':"
+            f"x='trunc(iw*{region.x}/2)*2':y='trunc(ih*{region.y}/2)*2',split=2[{name}bg][{name}fg];"
+            f"[{name}bg]scale={background_width}:{background_height}:force_original_aspect_ratio=increase,"
+            f"crop={background_width}:{background_height},gblur=sigma=8,scale={width}:{panel_height}[{name}back];"
+            f"[{name}fg]scale=w='max(2,trunc(iw*{fit}/2)*2)':h='max(2,trunc(ih*{fit}/2)*2)',"
+            f"crop=w='min(iw,{width})':h='min(ih,{panel_height})':x=(iw-ow)/2:y=(ih-oh)/2[{name}subject];"
+            f"[{name}back][{name}subject]overlay=x=(W-w)/2:y={vertical}:shortest=1,setsar=1[{name}panel];"
+        )
+
+    graph = "[0:v]scale=w='trunc(iw*sar/2)*2':h=ih,setsar=1,split=2[camerasource][gamesource];"
+    graph += panel(layout.webcam, "camerasource", "camera", camera_height, layout.webcam_zoom)
+    graph += panel(layout.gameplay, "gamesource", "game", game_height, zoom)
+    graph += "[camerapanel][gamepanel]vstack=inputs=2:shortest=1,setsar=1,fps=30,format=yuv420p"
+    metadata = {"mode": "webcam-over-gameplay", "user_confirmed": True,
+                "webcam_zoom": layout.webcam_zoom, "gameplay_zoom": zoom, "gameplay_fit": layout.gameplay_fit,
+                "webcam_alignment": "bottom", "gameplay_alignment": "top", "internal_gap_px": 0,
+                "webcam": layout.webcam.model_dump(), "gameplay": layout.gameplay.model_dump(),
+                "webcam_output": {"x": 0, "y": 0, "width": width, "height": camera_height},
+                "gameplay_output": {"x": 0, "y": camera_height, "width": width, "height": game_height}}
+    return graph, metadata
+
+
 def render(source: Path, start: float, end: float, directory: Path, words: list[dict],
            has_audio: bool, guard: Callable[[], None] = lambda: None,
            width: int = 1080, height: int = 1920, zoom: float = 1.5,
-           encoder: str = "cpu", encoder_decision: dict | None = None) -> Path:
+           encoder: str = "cpu", encoder_decision: dict | None = None,
+           webcam_layout: WebcamLayout | None = None) -> Path:
     if not math.isfinite(zoom) or not 1 <= zoom <= 2:
         raise ValueError("Zoom must be between 1 and 2.")
+    if webcam_layout is not None:
+        webcam_layout = WebcamLayout.model_validate(webcam_layout)
     directory.mkdir(parents=True, exist_ok=True)
     decision = dict(encoder_decision) if encoder_decision is not None else choose_encoder(encoder, directory, guard)
     if decision.get("requested") != encoder:
@@ -337,6 +373,9 @@ def render(source: Path, start: float, end: float, directory: Path, words: list[
         f"crop=w='min(iw,{width})':h='min(ih,{height})':x=(iw-ow)/2:y=(ih-oh)/2[subject];"
         "[backdrop][subject]overlay=x=(W-w)/2:y=(H-h)/2:shortest=1,setsar=1,fps=30,format=yuv420p"
     )
+    layout_metadata = {"mode": "partial-zoom-blurred-background", "user_confirmed": False}
+    if webcam_layout is not None:
+        filters, layout_metadata = webcam_composition(webcam_layout, width, height, zoom)
     if cue_count:
         filters += f",subtitles=captions.ass:original_size={width}x{height}"
     filters += "[composed]"
@@ -383,7 +422,7 @@ def render(source: Path, start: float, end: float, directory: Path, words: list[
                      "timings": {name: round(sum(attempt[name] for attempt in attempts), 3)
                                  for name in ("encode_seconds", "inspect_seconds", "validate_seconds")},
                      "attempts": attempts,
-                     "renderer_version": 6, "video_codec": "h264", "pixel_format": "yuv420p",
+                     "renderer_version": 10, "layout": layout_metadata, "video_codec": "h264", "pixel_format": "yuv420p",
                      "captions": {"canvas": [width, height], "font_size_px": round(width * CAPTION_FONT_WIDTH_RATIO, 2),
                                   "bottom_margin_px": round(height * CAPTION_BOTTOM_MARGIN_RATIO),
                                   "scale_x": 100, "scale_y": 100, "zoom_independent": True},

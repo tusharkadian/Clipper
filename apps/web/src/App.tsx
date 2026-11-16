@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { Activity, ArrowDownToLine, ArrowUpRight, Check, ChevronDown, CircleAlert, Clapperboard, Cpu, Download, FileVideo, FlaskConical, Gauge, HardDrive, Leaf, Link, LoaderCircle, LockKeyhole, Pause, Play, Plus, RefreshCw, RotateCcw, Trash2, Upload, X } from "lucide-react";
+import { Activity, ArrowDownToLine, ArrowUpRight, Check, ChevronDown, CircleAlert, Clapperboard, Cpu, Crop, Download, FileVideo, FlaskConical, Gauge, HardDrive, Leaf, Link, LoaderCircle, LockKeyhole, Pause, Play, Plus, RefreshCw, RotateCcw, Trash2, Upload, X } from "lucide-react";
+import { WebcamEditor } from "./WebcamEditor";
+import type { ScreenshotReference } from "./WebcamEditor";
 import { artifact, connect, report, request, upload } from "./api";
 import type { Export, Job, Options, System } from "./api";
 
@@ -25,6 +27,9 @@ export function App() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<{ job: Job; clip: Export } | null>(null);
+  const [layoutOpen, setLayoutOpen] = useState(false);
+  const [sourcePreview, setSourcePreview] = useState<string | null>(null);
+  const [layoutReference, setLayoutReference] = useState<ScreenshotReference | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -47,6 +52,14 @@ export function App() {
   }, []);
 
   useEffect(() => { if (preview && dialog.current && !dialog.current.open) dialog.current.showModal(); }, [preview]);
+  useEffect(() => {
+    if (!file || sourceTab !== "file") { setSourcePreview(null); return; }
+    const object = URL.createObjectURL(file);
+    setSourcePreview(object);
+    return () => URL.revokeObjectURL(object);
+  }, [file, sourceTab]);
+
+  function resetWebcam() { setOptions(current => ({ ...current, webcam_layout: null })); setLayoutReference(null); }
 
   async function perform(action: () => Promise<unknown>) {
     setError("");
@@ -68,6 +81,7 @@ export function App() {
         await request("/sources", "POST", { url, options: processingOptions });
         setUrl("");
       }
+      resetWebcam();
     });
     setBusy(false);
   }
@@ -118,13 +132,13 @@ export function App() {
           <div className="section-heading"><h2 id="source-heading">New recording</h2><span className="section-index">01</span></div>
           <form onSubmit={submit}>
             <div className="segmented" aria-label="Processing mode"><button type="button" className={options.mode === "clips" ? "selected" : ""} onClick={() => setOptions({ ...options, mode: "clips" })}><Clapperboard size={15} />Extract clips</button><button type="button" className={options.mode === "benchmark" ? "selected" : ""} onClick={() => setOptions({ ...options, mode: "benchmark" })}><FlaskConical size={15} />Benchmark</button></div>
-            <div className="source-tabs"><button type="button" className={sourceTab === "file" ? "active" : ""} onClick={() => setSourceTab("file")}><FileVideo size={15} />Local file</button><button type="button" className={sourceTab === "url" ? "active" : ""} onClick={() => setSourceTab("url")}><Link size={15} />Video URL</button></div>
-            {sourceTab === "file" ? <div className="file-picker"><input ref={fileInput} id="video-file" aria-label="Recording file" type="file" accept=".mp4,.mkv,.mov,.webm,.avi,.m4v,.ts" onChange={event => setFile(event.target.files?.[0] || null)} /><label htmlFor="video-file"><Upload size={27} /><strong>{file ? file.name : "Choose recording"}</strong><span>{file ? `${(file.size / 1024 ** 2).toFixed(1)} MB` : "MP4, MKV, MOV, WebM"}</span></label></div> : <div className="url-field"><label htmlFor="source-url">YouTube video or Twitch VOD</label><input id="source-url" type="url" placeholder="https://" value={url} onChange={event => setUrl(event.target.value)} required /></div>}
+            <div className="source-tabs"><button type="button" className={sourceTab === "file" ? "active" : ""} onClick={() => { if (sourceTab !== "file") resetWebcam(); setSourceTab("file"); }}><FileVideo size={15} />Local file</button><button type="button" className={sourceTab === "url" ? "active" : ""} onClick={() => { if (sourceTab !== "url") resetWebcam(); setSourceTab("url"); }}><Link size={15} />Video URL</button></div>
+            {sourceTab === "file" ? <div className="file-picker"><input ref={fileInput} id="video-file" aria-label="Recording file" type="file" accept=".mp4,.mkv,.mov,.webm,.avi,.m4v,.ts" onChange={event => { setFile(event.target.files?.[0] || null); resetWebcam(); }} /><label htmlFor="video-file"><Upload size={27} /><strong>{file ? file.name : "Choose recording"}</strong><span>{file ? `${(file.size / 1024 ** 2).toFixed(1)} MB` : "MP4, MKV, MOV, WebM"}</span></label></div> : <div className="url-field"><label htmlFor="source-url">YouTube video or Twitch VOD</label><input id="source-url" type="url" placeholder="https://" value={url} onChange={event => { setUrl(event.target.value); resetWebcam(); }} required /></div>}
+            <button type="button" className="secondary configure-layout" onClick={() => setLayoutOpen(true)}><Crop size={16} />Configure layout</button>
             <fieldset><legend>Processing profile</legend><div className="segmented"><button type="button" className={options.profile === "quiet" ? "selected" : ""} onClick={() => setOptions({ ...options, profile: "quiet" })}><Leaf size={15} />Quiet</button><button type="button" className={options.profile === "balanced" ? "selected" : ""} onClick={() => setOptions({ ...options, profile: "balanced" })}><Gauge size={15} />Balanced</button></div></fieldset>
             <label className="duration-field">{options.mode === "clips" ? "Clip length" : "Sample length"}{options.mode === "clips" ? <select aria-label="Clip length" value={options.clip_seconds} onChange={event => setOptions({ ...options, clip_seconds: Number(event.target.value) })}>{[20, 30, 40, 60, 90].map(value => <option key={value} value={value}>{value} seconds</option>)}</select> : <select aria-label="Sample length" value={options.sample_seconds} onChange={event => setOptions({ ...options, sample_seconds: Number(event.target.value) })}>{[60, 300, 1800].map(value => <option key={value} value={value}>{value / 60} minutes</option>)}</select>}</label>
             <label className="toggle-row" htmlFor="captions"><span>English captions</span><input id="captions" type="checkbox" checked={options.captions} onChange={event => setOptions({ ...options, captions: event.target.checked })} /><span className="toggle-track" aria-hidden="true" /></label>
             {options.mode === "clips" && <label className="toggle-row" htmlFor="ai-rerank"><span>Local AI reranking</span><input id="ai-rerank" type="checkbox" checked={options.ai_rerank} onChange={event => setOptions({ ...options, ai_rerank: event.target.checked })} /><span className="toggle-track" aria-hidden="true" /></label>}
-            <label className="zoom-field" htmlFor="portrait-zoom">Portrait zoom <output htmlFor="portrait-zoom">{options.zoom.toFixed(2)}x</output><input id="portrait-zoom" aria-label="Portrait zoom" type="range" min="1" max="2" step="0.05" value={options.zoom} onChange={event => setOptions({ ...options, zoom: Number(event.target.value) })} /></label>
             {options.mode === "clips" && <details><summary>Selection settings<ChevronDown size={15} /></summary><div className="advanced"><label>Maximum clips<input aria-label="Maximum clips" type="number" min="1" max="20" value={options.max_clips} onChange={event => setOptions({ ...options, max_clips: Number(event.target.value) })} /></label><label>Activity threshold <output>{options.threshold.toFixed(2)}</output><input aria-label="Activity threshold" type="range" min="0.1" max="1" step="0.05" value={options.threshold} onChange={event => setOptions({ ...options, threshold: Number(event.target.value) })} /></label></div></details>}
             <button type="submit" className="primary submit" disabled={busy || !connected || (sourceTab === "file" ? !file : !url)}>{busy ? <LoaderCircle className="spin" size={17} /> : <Plus size={18} />}{busy ? `Uploading ${uploadProgress}%` : options.mode === "benchmark" ? "Queue benchmark" : "Queue recording"}<ArrowUpRight size={17} /></button>
           </form>
@@ -150,6 +164,7 @@ export function App() {
       <footer className="footer"><span>CLIPPER / LOCAL STUDIO</span><span>English<span className="footer-dot" />Cloud disabled<span className="footer-dot" />{system?.ready ? "Media tools ready" : "Checking media tools"}</span></footer>
     </main>
     {preview && <dialog ref={dialog} onClose={() => setPreview(null)} className="preview-dialog"><div className="preview-title"><strong>{preview.job.title}</strong><IconButton label="Close preview" onClick={() => dialog.current?.close()}><X size={19} /></IconButton></div><video controls autoPlay playsInline src={artifact(preview.job.id, preview.clip.id, "clip.mp4")} /><div className="preview-details"><span>{clock(preview.clip.start)} - {clock(preview.clip.end)}</span><a className="secondary" href={artifact(preview.job.id, preview.clip.id, "clip.mp4")} download><Download size={16} />Export MP4</a></div></dialog>}
+    {layoutOpen && <WebcamEditor source={sourcePreview} initial={options.webcam_layout || null} reference={layoutReference} zoom={options.zoom} close={() => setLayoutOpen(false)} save={(layout, reference, zoom) => { setOptions(current => ({ ...current, zoom, webcam_layout: layout })); setLayoutReference(reference); setLayoutOpen(false); }} />}
   </div>;
 }
 

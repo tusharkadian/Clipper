@@ -4,7 +4,7 @@ import pytest
 
 from clipper.analysis import distinct_candidates, rank_candidates, scene_boundaries, speech_boundaries
 from clipper.config import configure_tools
-from clipper.domain import Candidate, RunOptions
+from clipper.domain import Candidate, RunOptions, WebcamLayout
 from clipper.media import MediaError, choose_encoder, encoder_arguments, extract_features, ffmpeg, probe, render, terminate, write_ass_captions, write_captions
 from clipper.preflight import executable
 
@@ -426,6 +426,108 @@ def test_real_ffmpeg_render_and_corrupt_input(tmp_path: Path):
     bad.write_bytes(b"not video")
     with pytest.raises(MediaError):
         probe(bad, tmp_path / "bad")
+
+
+def test_explicit_webcam_is_above_gameplay_without_stretching_or_duplicate_inset(tmp_path):
+    import json
+    import subprocess
+    configure_tools()
+    if not executable("ffmpeg") or not executable("ffprobe"):
+        pytest.skip("FFmpeg integration tools not installed")
+    source = tmp_path / "known-webcam-inset.mp4"
+    ffmpeg(["-f", "lavfi", "-i", "color=c=green:size=320x180:rate=15:duration=2",
+            "-vf", "drawbox=x=256:y=0:w=64:h=45:color=red:t=fill,drawbox=x=275:y=12:w=12:h=12:color=white:t=fill",
+            "-c:v", "libx264", str(source)], tmp_path)
+    layout = WebcamLayout.model_validate({"webcam": {"x": 0.8, "y": 0, "width": 0.2, "height": 0.25},
+        "gameplay": {"x": 0, "y": 0, "width": 0.8, "height": 1}, "top_fraction": 0.3})
+    output = render(source, 0, 2, tmp_path / "export", [{"start": 0.2, "end": 1.8, "word": "Caption"}],
+                    False, width=360, height=640, webcam_layout=layout)
+    pixels = subprocess.run([executable("ffmpeg"), "-v", "error", "-ss", "1", "-i", str(output),
+                             "-frames:v", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", "-"],
+                            capture_output=True, check=True).stdout
+    assert len(pixels) == 360 * 640 * 3
+    top = [pixels[index:index + 3] for index in range(0, 360 * 192 * 3, 3)]
+    bottom = [pixels[index:index + 3] for index in range(360 * 192 * 3, len(pixels), 3)]
+    assert sum(red > green + 80 for red, green, blue in top) > len(top) * 0.7
+    assert sum(red > green + 80 for red, green, blue in bottom) == 0
+    assert sum(green > red + 40 for red, green, blue in bottom) > len(bottom) * 0.8
+    white = [(index % 360, index // 360) for index in range(360 * 192)
+             if min(pixels[index * 3:index * 3 + 3]) > 220]
+    assert white
+    marker_width = max(point[0] for point in white) - min(point[0] for point in white) + 1
+    marker_height = max(point[1] for point in white) - min(point[1] for point in white) + 1
+    assert 0.8 <= marker_width / marker_height <= 1.2
+    assert any(min(pixel) > 220 for pixel in bottom)
+    metadata = json.loads((output.parent / "encoding.json").read_text())
+    assert metadata["renderer_version"] == 10
+    assert metadata["layout"]["user_confirmed"]
+    assert metadata["layout"]["gameplay_output"]["y"] == 192
+
+
+@pytest.mark.parametrize("zoom", [1, 2])
+def test_webcam_and_full_gameplay_touch_with_blur_only_outside_the_stack(tmp_path, zoom):
+    import json
+    import subprocess
+    configure_tools()
+    if not executable("ffmpeg") or not executable("ffprobe"):
+        pytest.skip("FFmpeg integration tools not installed")
+    source = tmp_path / "wide-webcam.mp4"
+    ffmpeg(["-f", "lavfi", "-i", "color=c=green:size=320x180:rate=15:duration=2",
+            "-vf", "drawbox=x=0:y=0:w=128:h=12:color=blue:t=fill,drawbox=x=160:y=0:w=160:h=45:color=red:t=fill,drawbox=x=160:y=40:w=160:h=4:color=white:t=fill",
+            "-c:v", "libx264", str(source)], tmp_path)
+    layout = WebcamLayout.model_validate({"webcam": {"x": 0.5, "y": 0, "width": 0.5, "height": 0.25}})
+    output = render(source, 0, 2, tmp_path / "touching", [], False, width=360, height=640, zoom=zoom, webcam_layout=layout)
+    pixels = subprocess.run([executable("ffmpeg"), "-v", "error", "-ss", "1", "-i", str(output),
+                             "-frames:v", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", "-"],
+                            capture_output=True, check=True).stdout
+
+    def pixel(x, y):
+        index = (y * 360 + x) * 3
+        return tuple(pixels[index:index + 3])
+
+    assert min(pixel(90, 190)) > 210
+    red, green, blue = pixel(90, 194)
+    assert blue > 180 and red < 70 and green < 70
+    red, green, blue = pixel(300, 210)
+    assert red > 180 and green < 70 and blue < 70
+    assert max(pixel(180, 10)) > 50 and max(pixel(180, 620)) > 50
+    metadata = json.loads((output.parent / "encoding.json").read_text())
+    assert metadata["layout"]["gameplay"] == {"x": 0, "y": 0, "width": 1, "height": 1}
+    assert metadata["layout"]["gameplay_fit"] == "fit"
+    assert metadata["layout"]["webcam_zoom"] == 1
+    assert metadata["layout"]["webcam_alignment"] == "bottom"
+    assert metadata["layout"]["gameplay_alignment"] == "top"
+    assert metadata["layout"]["internal_gap_px"] == 0
+
+
+def test_legacy_explicit_webcam_zoom_and_fill_remain_supported(tmp_path):
+    import subprocess
+    configure_tools()
+    if not executable("ffmpeg") or not executable("ffprobe"):
+        pytest.skip("FFmpeg integration tools not installed")
+    source = tmp_path / "independent-zoom.mp4"
+    ffmpeg(["-f", "lavfi", "-i", "color=c=green:size=320x180:rate=15:duration=1",
+            "-vf", "drawbox=x=148:y=88:w=24:h=24:color=white:t=fill,drawbox=x=256:y=0:w=64:h=45:color=red:t=fill,drawbox=x=275:y=12:w=12:h=12:color=white:t=fill",
+            "-c:v", "libx264", str(source)], tmp_path)
+    markers = []
+    for game_zoom, camera_zoom in [(1, 1), (2, 1), (1, 2)]:
+        layout = WebcamLayout.model_validate({"webcam": {"x": 0.8, "y": 0, "width": 0.2, "height": 0.25},
+                                              "webcam_zoom": camera_zoom, "gameplay_fit": "fill"})
+        output = render(source, 0, 1, tmp_path / f"zoom-{game_zoom}-{camera_zoom}", [], False,
+                        width=360, height=640, zoom=game_zoom, webcam_layout=layout)
+        pixels = subprocess.run([executable("ffmpeg"), "-v", "error", "-i", str(output), "-frames:v", "1",
+                                 "-pix_fmt", "rgb24", "-f", "rawvideo", "-"], capture_output=True, check=True).stdout
+        sizes = []
+        for first, last in [(0, 192), (192, 640)]:
+            white = [(index % 360, index // 360) for index in range(first * 360, last * 360)
+                     if min(pixels[index * 3:index * 3 + 3]) > 220]
+            sizes.append(max(point[0] for point in white) - min(point[0] for point in white) + 1)
+        markers.append(sizes)
+    assert 55 <= markers[0][1] <= 65
+    assert markers[0][0] == markers[1][0]
+    assert 1.8 <= markers[1][1] / markers[0][1] <= 2.2
+    assert markers[0][1] == markers[2][1]
+    assert 1.8 <= markers[2][0] / markers[0][0] <= 2.2
 
 
 def test_portrait_background_has_no_added_black_bars_and_zoom_is_partial(tmp_path: Path):

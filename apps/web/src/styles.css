@@ -67,7 +67,7 @@ legend, .field-grid label, .url-field label, .advanced label { font-size: 12px; 
 legend { padding: 0; margin-bottom: 10px; }
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 select, input[type=url], input[type=number] { width: 100%; min-height: 37px; border: 1px solid #cfd7d0; background: #fff; color: var(--ink); border-radius: 4px; margin-top: 8px; padding: 8px; font-size: 12px; }
-.url-field { margin-top: 20px; min-height: 136px; }
+.url-field { margin-top: 16px; }
 .toggle-row { display: flex; justify-content: space-between; align-items: center; position: relative; min-height: 49px; font-size: 12px; margin-top: 8px; cursor: pointer; }
 .toggle-row input { position: absolute; right: 0; width: 34px; height: 22px; opacity: 0; }
 .toggle-track { width: 32px; height: 18px; border-radius: 12px; background: #b7c1b9; position: relative; pointer-events: none; }
@@ -138,6 +138,38 @@ input[type=range] { width: 100%; accent-color: var(--green); margin: 18px 0; }
 .preview-title strong { font-size: 13px; overflow-wrap: anywhere; }
 .preview-dialog video { width: 100%; height: min(65dvh, 640px); background: #141719; }
 .preview-details { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 12px; font-size: 12px; }
+.configure-layout { margin-top: 12px; }
+.layout-dialog { border: 1px solid var(--line); padding: 20px; border-radius: 7px; width: min(96vw, 980px); max-height: 94dvh; overflow: auto; color: var(--ink); background: var(--paper); }
+.layout-dialog::backdrop { background: #101a14bb; }
+.layout-dialog h2 { display: flex; gap: 8px; align-items: center; }
+.layout-previews { display: grid; grid-template-columns: minmax(0, 1fr) 220px; align-items: start; gap: 18px; margin: 18px 0; }
+.layout-label { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+.source-frame { position: relative; width: 100%; background: #171a18; overflow: hidden; }
+.source-frame video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.source-frame img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.screenshot-picker { position: relative; margin-bottom: 12px; cursor: pointer; }
+.screenshot-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.screenshot-source { margin-left: 8px; margin-bottom: 12px; }
+.screenshot-frame .crop-interaction { inset: 0; }
+.crop-coordinates { margin-top: 12px; }
+.crop-coordinates .region-fields { padding-bottom: 14px; }
+.crop-interaction { position: absolute; inset: 0 0 36px; z-index: 2; cursor: crosshair; touch-action: none; }
+.source-region { position: absolute; border: 2px dashed #fff; pointer-events: none; z-index: 3; }
+.source-region.webcam { border-color: #df536d; }
+.source-region.gameplay { border-color: #44c89b; }
+.source-region.active { border-style: solid; }
+.source-region span { display: inline-block; max-width: 100%; font-size: 10px; padding: 3px 5px; color: #fff; background: #14241ddd; overflow: hidden; white-space: nowrap; }
+.portrait-preview canvas { display: block; width: 100%; aspect-ratio: 9 / 16; background: #171a18; }
+.portrait-preview { position: sticky; top: 0; min-width: 0; }
+.layout-controls { margin-top: 16px; }
+.layout-controls .zoom-field { margin-top: 14px; }
+.region-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.region-fields label { font-size: 12px; }
+.layout-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.layout-feedback { min-height: 44px; padding-top: 8px; }
+.layout-error { margin: 0; font-size: 12px; line-height: 1.5; color: #913e2c; }
+.layout-empty { display: flex; gap: 12px; align-items: center; justify-content: center; min-height: 100px; color: var(--muted); font-size: 12px; }
+@media (max-width: 700px) { .layout-dialog { padding: 12px; } .layout-previews { grid-template-columns: minmax(0, 1fr) 96px; gap: 12px; } .portrait-preview { min-width: 0; } .region-fields { grid-template-columns: 1fr 1fr; } }
 .spin { animation: spin 1.2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 1000px) { .topbar { padding: 0 24px; } main { padding: 28px 24px 0; } .work-grid { grid-template-columns: 300px minmax(0, 1fr); } .source-section { padding-right: 22px; } .queue-section { padding-left: 22px; } .hardware-item { padding: 0 13px; } .hardware-item strong { font-size: 14px; } .hardware-item > svg { display: none; } .job-state { min-width: 85px; max-width: 100px; } }

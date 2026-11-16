@@ -1,3 +1,6 @@
+export interface SourceRegion { x: number; y: number; width: number; height: number }
+export interface WebcamLayout { webcam: SourceRegion; gameplay: SourceRegion; top_fraction: number; webcam_zoom: number; gameplay_fit: "fill" | "fit" }
+
 export interface Options {
   mode: "clips" | "benchmark";
   profile: "quiet" | "balanced";
@@ -11,6 +14,7 @@ export interface Options {
   ai_rerank: boolean;
   encoder: "auto" | "cpu" | "nvenc";
   analysis_decoder: "auto" | "cpu" | "nvdec";
+  webcam_layout?: WebcamLayout | null;
 }
 
 export interface Export {

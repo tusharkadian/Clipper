@@ -368,9 +368,11 @@ class Processor:
             folder = self.directory / f"clip-{index + 1:02}"
             try:
                 plan = ClipPlan(source_start=candidate.start, source_end=candidate.end, candidate=candidate,
-                                zoom=self.options.zoom, ranker=ranking["method"], encoder=self.options.encoder)
+                                zoom=self.options.zoom, ranker=ranking["method"], encoder=self.options.encoder,
+                                webcam_layout=self.options.webcam_layout,
+                                layout="webcam-over-gameplay" if self.options.webcam_layout else "partial-zoom-blurred-background")
                 render_key = hashlib.sha256(json.dumps({
-                    "upstream": self.cache_key, "renderer": 6, "plan": plan.model_dump(),
+                    "upstream": self.cache_key, "renderer": 10, "plan": plan.model_dump(),
                 }, sort_keys=True).encode()).hexdigest()
                 folder.mkdir(parents=True, exist_ok=True)
                 receipt = folder / "complete.json"
@@ -380,7 +382,7 @@ class Processor:
                                                 words if self.options.captions else [], info["has_audio"])
                     ffmpeg(["-i", str(folder / "clip.mp4"), "-frames:v", "1", "-vf", "scale=270:-2", str(folder / "thumbnail.jpg")], folder, self.guard)
                     write_json(folder / "plan.json", {**plan.model_dump(), "source_sha256": digest.hexdigest(),
-                                                     "pipeline_version": 1, "renderer_version": 6, "encoding": encoding})
+                                                     "pipeline_version": 1, "renderer_version": 10, "encoding": encoding})
                     write_json(receipt, {"key": render_key})
                 encoding = json.loads((folder / "encoding.json").read_text(encoding="utf-8"))
                 self.encoding_warning(encoding)
@@ -421,7 +423,7 @@ class Processor:
             self.encoder_decision = choose_encoder(self.options.encoder, self.directory, self.guard)
             self.timings["encoder-probe"] = self.encoder_decision["probe_seconds"]
         render(source, start, end, folder, words, has_audio, self.guard, zoom=self.options.zoom,
-               encoder=self.options.encoder, encoder_decision=self.encoder_decision)
+             encoder=self.options.encoder, encoder_decision=self.encoder_decision, webcam_layout=self.options.webcam_layout)
         encoding = json.loads((folder / "encoding.json").read_text(encoding="utf-8"))
         self.encoding_warning(encoding)
         if encoding.get("fallback_reason"):
@@ -455,8 +457,9 @@ class Processor:
             encoding = self.render_clip(source, start, start + length, folder, words, info["has_audio"])
             ffmpeg(["-i", str(folder / "clip.mp4"), "-frames:v", "1", "-vf", "scale=270:-2", str(folder / "thumbnail.jpg")], folder, self.guard)
             write_json(folder / "plan.json", {"benchmark": True, "source_start": start, "source_end": start + length,
-                                             "layout": "partial-zoom-blurred-background", "zoom": self.options.zoom,
-                                             "renderer_version": 6, "encoding": encoding})
+                                             "layout": "webcam-over-gameplay" if self.options.webcam_layout else "partial-zoom-blurred-background",
+                                             "webcam_layout": self.options.webcam_layout.model_dump() if self.options.webcam_layout else None,
+                                             "zoom": self.options.zoom, "renderer_version": 10, "encoding": encoding})
             exports.append({"id": folder.name, "start": start, "end": start + length, "score": 0,
                             "reason": "Fixed benchmark interval; not a detected highlight", "encoding": encoding})
             self.timings[f"render-{index + 1}"] = round(time.monotonic() - begin, 3)

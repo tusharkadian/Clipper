@@ -164,6 +164,32 @@ def test_analysis_version_invalidates_only_old_analysis_and_reports_cache(tmp_pa
     assert processor.analysis_report["timings"]["visual_seconds"] == 2
 
 
+def test_worker_passes_explicit_webcam_settings_to_renderer(tmp_path):
+    import json
+    from threading import Event
+    from clipper.worker import Processor
+    settings = Settings(tmp_path, reserve_bytes=0)
+    settings.prepare()
+    store = Store(tmp_path / "jobs.sqlite3")
+    layout = {"webcam": {"x": 0.8, "y": 0, "width": 0.2, "height": 0.25},
+              "gameplay": {"x": 0, "y": 0, "width": 0.8, "height": 1}, "top_fraction": 0.3,
+              "webcam_zoom": 1.75, "gameplay_fit": "fit"}
+    job = store.create("source", "file", "source.mp4", RunOptions(zoom=1.25, webcam_layout=layout).model_dump())
+    store.claim("worker")
+    processor = Processor(settings, store, job, "worker", Event())
+
+    def rendered(source, start, end, folder, *args, **kwargs):
+        assert kwargs["webcam_layout"].model_dump() == layout
+        assert kwargs["zoom"] == 1.25
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "encoding.json").write_text(json.dumps({"actual": "libx264"}))
+
+    with patch("clipper.worker.choose_encoder", return_value={"actual": "libx264", "probe_seconds": 0}), patch(
+        "clipper.worker.render", side_effect=rendered
+    ):
+        assert processor.render_clip(Path("source.mp4"), 0, 20, tmp_path / "clip", [], False)["actual"] == "libx264"
+
+
 def test_analysis_fallback_reason_is_visible_in_worker_warnings(tmp_path: Path):
     from threading import Event
     from clipper.worker import Processor

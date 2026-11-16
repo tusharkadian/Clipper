@@ -149,3 +149,46 @@ def test_reranker_install_is_explicit_and_duplicate_requests_are_blocked(tmp_pat
     assert response.json()["kind"] == "model"
     assert response.json()["source"] == "qwen-reranker"
     assert api.post("/api/reranker/model").status_code == 409
+
+
+def test_webcam_layout_allows_full_gameplay_without_forced_camera_exclusion(tmp_path):
+    from clipper.domain import RunOptions
+    assert RunOptions().webcam_layout is None
+    api = client(tmp_path)
+    layout = {"webcam": {"x": 0.8, "y": 0, "width": 0.2, "height": 0.25},
+              "gameplay": {"x": 0, "y": 0, "width": 0.8, "height": 1}, "top_fraction": 0.3}
+    response = api.post("/api/sources", json={"url": "https://youtu.be/abcdefghijk", "options": {"webcam_layout": layout}})
+    assert response.status_code == 201
+    assert response.json()["options"]["webcam_layout"] == {**layout, "webcam_zoom": 1, "gameplay_fit": "fit"}
+    layout["gameplay"]["width"] = 1
+    response = api.post("/api/sources", json={"url": "https://youtu.be/abcdefghijk", "options": {"webcam_layout": layout}})
+    assert response.status_code == 201
+    assert response.json()["options"]["webcam_layout"]["gameplay"]["width"] == 1
+    assert RunOptions(webcam_layout={"webcam": layout["webcam"]}).webcam_layout.gameplay.model_dump() == {
+        "x": 0, "y": 0, "width": 1, "height": 1}
+    layout.update(webcam_zoom=1.75, gameplay_fit="fit")
+    response = api.post("/api/sources", json={"url": "https://youtu.be/abcdefghijk", "options": {"zoom": 1.25, "webcam_layout": layout}})
+    assert response.status_code == 201
+    assert response.json()["options"]["webcam_layout"] == layout
+    assert response.json()["options"]["zoom"] == 1.25
+
+
+@pytest.mark.parametrize("field,value", [("webcam_zoom", 0.9), ("webcam_zoom", 2.1),
+    ("webcam_zoom", float("nan")), ("webcam_zoom", float("inf")), ("gameplay_fit", "stretch")])
+def test_invalid_webcam_zoom_or_framing_is_rejected(field, value):
+    from pydantic import ValidationError
+    from clipper.domain import WebcamLayout
+    with pytest.raises(ValidationError):
+        WebcamLayout.model_validate({"webcam": {"x": 0.8, "y": 0, "width": 0.2, "height": 0.25}, field: value})
+
+
+@pytest.mark.parametrize("region", [
+    {"x": 0.9, "y": 0, "width": 0.2, "height": 0.25},
+    {"x": 0, "y": 0, "width": 0.001, "height": 0.25},
+    {"x": float("nan"), "y": 0, "width": 0.2, "height": 0.25},
+])
+def test_invalid_webcam_crop_is_rejected(region):
+    from pydantic import ValidationError
+    from clipper.domain import SourceRegion
+    with pytest.raises(ValidationError):
+        SourceRegion.model_validate(region)

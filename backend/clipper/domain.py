@@ -6,6 +6,29 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class SourceRegion(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    width: float = Field(ge=0.02, le=1)
+    height: float = Field(ge=0.02, le=1)
+
+    @model_validator(mode="after")
+    def inside_source(self):
+        if self.x + self.width > 1.00000001 or self.y + self.height > 1.00000001:
+            raise ValueError("The region must remain inside the source frame.")
+        return self
+
+
+class WebcamLayout(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    webcam: SourceRegion
+    gameplay: SourceRegion = Field(default_factory=lambda: SourceRegion(x=0, y=0, width=1, height=1))
+    top_fraction: float = Field(default=0.3, ge=0.2, le=0.45)
+    webcam_zoom: float = Field(default=1, ge=1, le=2)
+    gameplay_fit: Literal["fill", "fit"] = "fit"
+
+
 class RunOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
     profile: Literal["quiet", "balanced"] = "quiet"
@@ -20,6 +43,7 @@ class RunOptions(BaseModel):
     ai_rerank: bool = True
     encoder: Literal["auto", "cpu", "nvenc"] = "auto"
     analysis_decoder: Literal["auto", "cpu", "nvdec"] = "auto"
+    webcam_layout: WebcamLayout | None = None
 
 
 class URLInput(BaseModel):
@@ -61,7 +85,7 @@ class Candidate(BaseModel):
 
 
 class ClipPlan(BaseModel):
-    version: int = 6
+    version: int = 10
     source_start: float
     source_end: float
     layout: str = "partial-zoom-blurred-background"
@@ -72,3 +96,4 @@ class ClipPlan(BaseModel):
     encoder: Literal["auto", "cpu", "nvenc"] = "auto"
     ranker: str = "activity-v1"
     candidate: Candidate
+    webcam_layout: WebcamLayout | None = None
